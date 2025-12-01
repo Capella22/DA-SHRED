@@ -66,14 +66,14 @@ Ready-to-run examples:
     da-shred-sindy/
     │
     ├── models/
-    │   ├── shred.py                # SHRED model (GRU encoder + shallow decoder)
+    │   ├── shred.py                # SHRED model
     │   ├── sindy_utils.py          # SINDy library + enhanced STLSQ
     │   ├── compressed_reassembly.py# Algorithm 1 implementation
     │   ├── dashred.py              # Latent-space data assimilation
     │
     ├── scripts/
     │   ├── train_shred_with_sindy.py   # Train SHRED (+ optional SINDy regularization)
-    │   ├── train_da_shred.py           # Assimilation + latent SINDy discovery
+    │   ├── train_da_shred.py           # Data Assimilation
     │   ├── demo_burgers.py             # Full Burgers example
     │   ├── demo_gray_scott.py          # Damped Gray–Scott example
     │
@@ -81,7 +81,7 @@ Ready-to-run examples:
     │   ├── data_loaders.py
     │   ├── metrics.py
     │
-    ├── data/                    # Auto-populated by demos
+    ├── data/                    
     ├── requirements.txt
     └── README.md
 
