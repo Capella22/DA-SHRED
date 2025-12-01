@@ -108,7 +108,7 @@ Ready-to-run examples:
 ## 📚 Paper
 
 ``` bibtex
-@article{your2025shred,
+@article{bao2025shred,
   title={Data Assimilation and Discrepancy Modeling with Shallow Recurrent Decoders},
   author={...},
   journal={...},
