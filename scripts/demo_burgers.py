@@ -2,7 +2,6 @@
 """
 Tiny end-to-end demo using 1D viscous Burgers equation to generate toy data,
 train SHRED, and run DA + SINDy discovery in latent space.
-This is minimal and intended to run quickly on CPU for demonstration.
 """
 import numpy as np
 from scipy.integrate import solve_ivp
