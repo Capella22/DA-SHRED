@@ -8,9 +8,9 @@ This repository accompanies the methodology presented in\
 **"Data Assimilation and Discrepancy Modeling with Shallow Recurrent
 Decoders"** and provides end-to-end implementations of:
 
--   **SHRED** --- Shallow Recurrent Decoder\
--   **DA-SHRED** --- latent-space data assimilation\
--   **Discrepancy Modeling** --- SINDy-like regression in the latent space for missing physics recovery\
+-   **SHRED** --- Shallow Recurrent Decoder
+-   **DA-SHRED** --- latent-space data assimilation
+-   **Discrepancy Modeling** --- SINDy-like regression in the latent space for missing physics recovery
 -   **Example workflows** --- Burgers, damped 2DKS, damped Gray--Scott, damped 1D RDE and other PDE systems
 
 The aim is to bridge *data-driven dynamical modeling*, *operator learning*, and *data assimilation* under a single modular architecture.
