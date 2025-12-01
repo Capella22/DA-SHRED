@@ -24,10 +24,10 @@ The aim is to bridge *data-driven dynamical modeling*, *operator learning*, and 
 A hybrid neural architecture for reconstructing full spatio-temporal PDE
 fields from **sparse sensors only**.
 
--   GRU encoder over sliding windows of sensor traces\
--   Latent state capturing local flow regime\
--   Shallow MLP decoder for fast full-field reconstruction\
--   Naturally supports extremely sparse / irregular sensor maps\
+-   GRU encoder over sliding windows of sensor traces
+-   Latent state capturing local flow regime
+-   Shallow MLP decoder for fast full-field reconstruction
+-   Naturally supports extremely sparse / irregular sensor maps
 -   Extremely lightweight --- trains in minutes on CPU/GPU
 
 ------------------------------------------------------------------------
@@ -37,9 +37,9 @@ fields from **sparse sensors only**.
 Once trained, SHRED becomes a **decoder prior**, enabling posterior
 estimation directly in the latent space.
 
--   Assimilation = gradient-based updates to latent trajectories\
--   No explicit dynamics model required\
--   Supports arbitrary sensor maps and missing-data cases\
+-   Assimilation = gradient-based updates to latent trajectories
+-   No explicit dynamics model required
+-   Supports arbitrary sensor maps and missing-data cases
 -   Handles nonlinear / non-Gaussian uncertainty
 
 ------------------------------------------------------------------------
@@ -48,9 +48,9 @@ estimation directly in the latent space.
 
 Implements **Algorithm 1: Compressed search SINDy and Algorithm 2: Compressed advancing SINDy**, enabling:
 
--   Efficient, operator-aware feature generation\
--   Learning discrepancy operators **without** evaluating PDEs\
--   Scales to hundreds--thousands of operator candidates\
+-   Efficient, operator-aware feature generation
+-   Learning discrepancy operators **without** evaluating PDEs
+-   Scales to hundreds--thousands of operator candidates
 -   Operator discovery directly in latent space
 
 ------------------------------------------------------------------------
