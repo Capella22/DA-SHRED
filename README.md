@@ -65,23 +65,16 @@ Ready-to-run examples:
 
     da-shred-sindy/
     │
-    ├── models/
-    │   ├── shred.py                # SHRED model
-    │   ├── sindy_utils.py          # SINDy library + enhanced STLSQ
-    │   ├── compressed_reassembly.py# Algorithm 1 implementation
-    │   ├── dashred.py              # Latent-space data assimilation
-    │
-    ├── scripts/
-    │   ├── train_shred_with_sindy.py   # Train SHRED (+ optional SINDy regularization)
-    │   ├── train_da_shred.py           # Data Assimilation
-    │   ├── demo_burgers.py             # Full Burgers example
-    │   ├── demo_gray_scott.py          # Damped Gray–Scott example
-    │
+    ├── 2D models/
+    │   ├── 2DKS.py                # DA-SHRED for 2D Kuramoto-Sivashinsky Equation
+    │   ├── gray-scott.py          # DA-SHRED for 2D Gray-Scott Reaction-Diffusion System
+    │   
     ├── utils/
     │   ├── data_loaders.py
     │   ├── metrics.py
     │
-    ├── data/                    
+    ├── data/    
+    ├── DASHRED_1DKS_example.py    # DA-SHRED for 1D Kuramoto-Sivashinsky Equation
     ├── requirements.txt
     └── README.md
 
