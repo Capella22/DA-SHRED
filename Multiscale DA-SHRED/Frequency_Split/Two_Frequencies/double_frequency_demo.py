@@ -1,5 +1,5 @@
 """
-Two-Frequency DA-SHRED with Sparse-Frequency HF Learning
+Two-Frequency DA-SHRED with Multiscale HF Learning
 
 Key insight:
 - We can only supervise HF at sensor locations (don't have full U_real)
@@ -320,7 +320,7 @@ class LatentGAN(nn.Module):
 
 
 class SparseFreqDASHRED(nn.Module):
-    """DA-SHRED with sparse-frequency HF learning"""
+    """DA-SHRED with Multiscale HF learning"""
 
     def __init__(self, lf_shred, num_sensors, lags, hidden_size, output_size, sensor_indices):
         super().__init__()
@@ -805,11 +805,11 @@ if __name__ == "__main__":
     axes[1, 3].set_xlabel('Time')
     plt.colorbar(im3, ax=axes[1, 3])
 
-    plt.suptitle(f'Sparse-Frequency HF Learning (Sensor-Only Supervision)\n'
+    plt.suptitle(f'Multiscale HF Learning (Sensor-Only Supervision)\n'
                  f'True HF: k={k_high} | Sparsity: {sparsity_type}, λ={lambda_sparse}', fontsize=14)
     plt.tight_layout()
-    plt.savefig('sparse_freq_dashred_demo.png', dpi=150, bbox_inches='tight')
-    print("    Saved: sparse_freq_dashred_demo.png")
+    plt.savefig('Multiscale_dashred_demo.png', dpi=150, bbox_inches='tight')
+    print("    Saved: Multiscale_dashred_demo.png")
     plt.show()
 
     print("\nDone!")
