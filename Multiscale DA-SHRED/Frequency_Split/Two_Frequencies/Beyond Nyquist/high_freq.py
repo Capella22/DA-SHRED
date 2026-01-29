@@ -916,5 +916,6 @@ if __name__ == "__main__":
     plot_results(x, results, k1, k2, nyquist_k, history, 'super_nyquist_full_results.png')
 
     print("\n" + "="*70)
-    print("SUPER-NYQUIST EXPERIMENT COMPLETE")
+    print("BEYOND-NYQUIST EXPERIMENT COMPLETE")
+
     print("="*70)
