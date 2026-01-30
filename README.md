@@ -117,10 +117,6 @@ DA-SHRED/
 ├── RDE Application/               # Cheap2Rich implementation for Rotating Detonation Engines
 │                                  # (Full code: github.com/kro0l1k/Cheap2Rich)
 │
-├── utils/
-│   ├── data_loaders.py
-│   └── metrics.py
-│
 ├── DASHRED_1DKS_example.py        # DA-SHRED for 1D Kuramoto-Sivashinsky Equation
 ├── requirements.txt
 ├── LICENSE
