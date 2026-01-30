@@ -1,1 +1,8 @@
-
+numpy
+torch
+scikit-learn
+scikit-image
+scipy
+matplotlib
+pandas
+earthengine-api  # For data download only
