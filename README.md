@@ -19,6 +19,7 @@ This repository supports the following publications:
 1. **DA-SHRED** (Core Framework)  
    *"Data Assimilation and Discrepancy Modeling with Shallow Recurrent Decoders"*  
    [arXiv:2512.01170](https://arxiv.org/abs/2512.01170)
+   Full code release here
 
 2. **Cheap2Rich** (Multi-Scale Physics / RDE Application)  
    *"Cheap2Rich: A Multi-Fidelity Framework for Data Assimilation and System Identification of Multiscale Physics — Rotating Detonation Engines"*  
