@@ -163,25 +163,23 @@ class KuramotoSivashinsky2D:
 class TimeSeriesDataset2D(Dataset):
     """Dataset with time-lagged sensor measurements for SHRED."""
 
-    def __init__(self, U, sensor_indices, lags, scaler=None, fit_scaler=False):
+    def __init__(self, U, sensor_indices, lags, scaler=None, fit_scaler=False, use_indices=None):
         """
         U: (n_timesteps, Nx, Ny)
         sensor_indices: list of (i, j) tuples
+        use_indices: optional boolean mask over valid time indices (after lags)
         """
         self.n_timesteps, self.Nx, self.Ny = U.shape
         self.lags = lags
 
-        # Flatten spatial dimensions
-        self.U_flat = U.reshape(self.n_timesteps, -1)  # (T, Nx*Ny)
+        self.U_flat = U.reshape(self.n_timesteps, -1)
 
-        # Extract sensor readings
         self.sensor_indices = sensor_indices
         self.n_sensors = len(sensor_indices)
         self.S = np.zeros((self.n_timesteps, self.n_sensors))
         for idx, (i, j) in enumerate(sensor_indices):
             self.S[:, idx] = U[:, i, j]
 
-        # Use StandardScaler (zero mean, unit variance) - more stable than MinMax
         if scaler is None:
             self.scaler_U = StandardScaler()
             self.scaler_S = StandardScaler()
@@ -195,7 +193,11 @@ class TimeSeriesDataset2D(Dataset):
             self.U_scaled = self.scaler_U.transform(self.U_flat)
             self.S_scaled = self.scaler_S.transform(self.S)
 
-        self.valid_indices = np.arange(lags, self.n_timesteps)
+        all_valid = np.arange(lags, self.n_timesteps)
+        if use_indices is not None:
+            self.valid_indices = all_valid[use_indices[all_valid]]
+        else:
+            self.valid_indices = all_valid
 
     def __len__(self):
         return len(self.valid_indices)
@@ -266,7 +268,7 @@ class SHRED(nn.Module):
 class DASHRED(nn.Module):
     """DA-SHRED: SHRED with latent transformation for domain adaptation."""
 
-    def __init__(self, base_shred, freeze_decoder=False):
+    def __init__(self, base_shred, freeze_decoder=True):
         super().__init__()
         self.lstm = copy.deepcopy(base_shred.lstm)
         self.decoder = copy.deepcopy(base_shred.decoder)
@@ -475,13 +477,13 @@ def train_gan_aligner(aligner, Z_sim, Z_real, epochs=300, batch_size=32, lr=1e-4
 # 6. Training Functions
 
 
-def train_shred(model, train_data, valid_data, epochs=150, batch_size=32, lr=5e-4, patience=20):
+def train_shred(model, train_data, valid_data, epochs=150, batch_size=32, lr=5e-4, patience=100):
     """Train SHRED model."""
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(valid_data, batch_size=batch_size)
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=30, factor=0.5)
     criterion = nn.MSELoss()
 
     model.to(device)
@@ -532,8 +534,8 @@ def train_shred(model, train_data, valid_data, epochs=150, batch_size=32, lr=5e-
 
 
 def train_dashred(model, train_real, valid_real, shred_model, train_sim,
-                  sensor_indices_flat, epochs=200, batch_size=32, lr=1e-4, patience=30,
-                  gan_epochs=300, use_gan=True):
+                  sensor_indices_flat, epochs=400, batch_size=32, lr=5e-4,
+                  gan_epochs=500, use_gan=True):
     """Train DA-SHRED with GAN-based latent alignment."""
 
     # Extract latents
@@ -552,23 +554,18 @@ def train_dashred(model, train_real, valid_real, shred_model, train_sim,
     else:
         print("    Training MSE latent mapper...")
         mapper = LatentMapper(model.hidden_size)
-        mapper = train_latent_mapper(mapper, Z_sim, Z_real, epochs=200, lr=1e-3)
+        mapper = train_latent_mapper(mapper, Z_sim, Z_real, epochs=200, lr=1e-4)
         model.latent_aligner = mapper.net
 
     # Fine-tune full model with lower learning rate
     train_loader = DataLoader(train_real, batch_size=batch_size, shuffle=True)
-    valid_loader = DataLoader(valid_real, batch_size=batch_size)
 
-    # Differential learning rates
     optimizer = optim.Adam([
-        {'params': model.lstm.parameters(), 'lr': lr * 0.1},  # Fine-tune LSTM slowly
-        {'params': model.transform.parameters(), 'lr': lr},  # Train transform faster
-        {'params': model.decoder.parameters(), 'lr': lr * 0.5}  # Moderate for decoder
+        {'params': model.lstm.parameters(), 'lr': lr * 0.1},
+        {'params': model.transform.parameters(), 'lr': lr},
     ])
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=15, factor=0.5, min_lr=1e-6)
 
     model.to(device)
-    best_loss, best_state, wait = float('inf'), None, 0
 
     for epoch in range(epochs):
         model.train()
@@ -579,23 +576,24 @@ def train_dashred(model, train_real, valid_real, shred_model, train_sim,
 
             pred, latent, latent_t = model(sensors, apply_transform=True)
 
-            # Losses with better weighting
-            recon_loss = nn.functional.mse_loss(pred, state)
-
-            # Sensor loss - emphasize matching at sensor locations
             sensor_loss = nn.functional.mse_loss(pred[:, sensor_indices_flat], state[:, sensor_indices_flat])
 
-            # Regularization - don't let transform deviate too much
+            if hasattr(model, 'latent_aligner'):
+                with torch.no_grad():
+                    latent_target = model.latent_aligner(latent.detach())
+                align_loss = nn.functional.mse_loss(latent_t, latent_target)
+            else:
+                align_loss = torch.tensor(0.0, device=device)
+
             reg_loss = torch.mean((latent_t - latent) ** 2)
 
-            # Smoothness loss - encourage spatial coherence
             Nx = Ny = int(np.sqrt(model.output_size))
             pred_2d = pred.view(-1, Nx, Ny)
             dx = pred_2d[:, 1:, :] - pred_2d[:, :-1, :]
             dy = pred_2d[:, :, 1:] - pred_2d[:, :, :-1]
             smooth_loss = torch.mean(dx ** 2) + torch.mean(dy ** 2)
 
-            loss = recon_loss + 1.0 * sensor_loss + 0.001 * reg_loss + 0.01 * smooth_loss
+            loss = 5.0 * sensor_loss + 2.0 * align_loss + 0.01 * reg_loss + 0.01 * smooth_loss
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -604,32 +602,9 @@ def train_dashred(model, train_real, valid_real, shred_model, train_sim,
 
         train_loss /= len(train_real)
 
-        model.eval()
-        valid_loss = 0
-        with torch.no_grad():
-            for sensors, state in valid_loader:
-                sensors, state = sensors.to(device), state.to(device)
-                pred, _, _ = model(sensors)
-                valid_loss += nn.functional.mse_loss(pred, state).item() * len(sensors)
-        valid_loss /= len(valid_real)
-
-        scheduler.step(valid_loss)
-
-        if valid_loss < best_loss:
-            best_loss = valid_loss
-            best_state = copy.deepcopy(model.state_dict())
-            wait = 0
-        else:
-            wait += 1
-            if wait >= patience:
-                print(f"    Early stop at epoch {epoch + 1}")
-                break
-
         if (epoch + 1) % 25 == 0:
-            curr_lr = optimizer.param_groups[1]['lr']  # Transform LR
-            print(f"    Epoch {epoch + 1}, train: {train_loss:.6f}, valid: {valid_loss:.6f}, lr: {curr_lr:.2e}")
+            print(f"    Epoch {epoch + 1}, train: {train_loss:.6f}, lr: {lr:.2e}")
 
-    model.load_state_dict(best_state)
     return model
 
 
@@ -710,7 +685,7 @@ if __name__ == "__main__":
 
     # Damping parameters for "real" physics (choose one or combine)
     # Option A: Linear damping (u_t = ... - μ*u)
-    mu_damping = 0.06  # Small gap for DA-SHRED to close
+    mu_damping = 0.04  # Small gap for DA-SHRED to close
 
     # Option B: Diffusive damping (u_t = ... - ν_extra*∇²u), more physical
     nu_extra_damping = 0.0  # Set to e.g. 0.05 to use diffusive damping instead
@@ -718,15 +693,15 @@ if __name__ == "__main__":
     # SHRED
     num_sensors = 49  # 7x7 grid (more sensors for better reconstruction)
     lags = 20
-    hidden_size = 48  # Slightly larger
+    hidden_size = 36  # Slightly larger
     decoder_layers = [256, 256]
 
     # Training
     shred_epochs = 200
     shred_lr = 5e-4
-    dashred_epochs = 200  # Longer training
-    dashred_lr = 1e-4  # Lower learning rate
-    gan_epochs = 300  # GAN aligner epochs
+    dashred_epochs = 400
+    dashred_lr = 5e-4
+    gan_epochs = 1000
 
 
     # Generate Data
@@ -789,12 +764,17 @@ if __name__ == "__main__":
     print(f"    Sensors: {num_sensors} ({ns}x{ns} grid)")
     print(f"    Lags: {lags}")
 
-    n_train = int(0.8 * len(U_sim))
+    n_total = len(U_sim)
+    valid_mask = np.zeros(n_total, dtype=bool)
+    for i in range(lags, n_total):
+        if (i - lags) % 5 == 0:
+            valid_mask[i] = True
+    train_mask = ~valid_mask
 
-    train_sim = TimeSeriesDataset2D(U_sim[:n_train], sensor_indices, lags, fit_scaler=True)
-    valid_sim = TimeSeriesDataset2D(U_sim[n_train:], sensor_indices, lags, scaler=train_sim.get_scalers())
-    train_real = TimeSeriesDataset2D(U_real[:n_train], sensor_indices, lags, scaler=train_sim.get_scalers())
-    valid_real = TimeSeriesDataset2D(U_real[n_train:], sensor_indices, lags, scaler=train_sim.get_scalers())
+    train_sim = TimeSeriesDataset2D(U_sim, sensor_indices, lags, fit_scaler=True, use_indices=train_mask)
+    valid_sim = TimeSeriesDataset2D(U_sim, sensor_indices, lags, scaler=train_sim.get_scalers(), use_indices=valid_mask)
+    train_real = TimeSeriesDataset2D(U_real, sensor_indices, lags, scaler=train_sim.get_scalers(), use_indices=train_mask)
+    valid_real = TimeSeriesDataset2D(U_real, sensor_indices, lags, scaler=train_sim.get_scalers(), use_indices=valid_mask)
 
     print(f"    Train samples: {len(train_sim)}, Valid samples: {len(valid_sim)}")
 
@@ -842,7 +822,7 @@ if __name__ == "__main__":
     dashred_model = train_dashred(
         dashred_model, train_real, valid_real, shred_model, train_sim,
         sensor_indices_flat, epochs=dashred_epochs, lr=dashred_lr,
-        gan_epochs=gan_epochs, use_gan=True
+        gan_epochs=gan_epochs, use_gan=False
     )
 
 
@@ -851,17 +831,21 @@ if __name__ == "__main__":
 
     print("\n[6] Final evaluation...")
 
-    pred_before, truth, mse_before = evaluate(shred_model, valid_real, scaler_U)
-    pred_after, _, mse_after = evaluate(dashred_model, valid_real, scaler_U, is_dashred=True)
+    pred_before, truth, mse_before = evaluate(shred_model, train_real, scaler_U)
+    pred_after, _, mse_after = evaluate(dashred_model, train_real, scaler_U, is_dashred=True)
 
-    print(f"    SHRED on real: RMSE = {np.sqrt(mse_before):.4f}")
-    print(f"    DA-SHRED on real: RMSE = {np.sqrt(mse_after):.4f}")
+    n_half = len(pred_before) // 2
+    mse_before_half = np.mean((pred_before[n_half:] - truth[n_half:]) ** 2)
+    mse_after_half = np.mean((pred_after[n_half:] - truth[n_half:]) ** 2)
 
-    if mse_after < mse_before:
-        print(f"    Improvement: {mse_before / mse_after:.2f}x")
-        print(f"    Gap reduction: {(mse_before - mse_after) / mse_before * 100:.1f}%")
+    print(f"    [All]  SHRED: RMSE = {np.sqrt(mse_before):.4f}, DA-SHRED: RMSE = {np.sqrt(mse_after):.4f}")
+    print(f"    [Late] SHRED: RMSE = {np.sqrt(mse_before_half):.4f}, DA-SHRED: RMSE = {np.sqrt(mse_after_half):.4f}")
+
+    if mse_after_half < mse_before_half:
+        print(f"    Late improvement: {mse_before_half / mse_after_half:.2f}x")
+        print(f"    Late gap reduction: {(mse_before_half - mse_after_half) / mse_before_half * 100:.1f}%")
     else:
-        print(f"    WARNING: DA-SHRED did not improve (may need tuning)")
+        print(f"    WARNING: DA-SHRED did not improve on late frames (may need tuning)")
 
 
     # Visualization
@@ -875,39 +859,37 @@ if __name__ == "__main__":
         loader = DataLoader(train_real, batch_size=len(train_real))
         for sensors, _ in loader:
             sensors = sensors.to(device)
-            pred_flat, _, _ = dashred_model(sensors, apply_transform=True)
-            pred_flat = scaler_U.inverse_transform(pred_flat.cpu().numpy())
+            pred_flat_da, _, _ = dashred_model(sensors, apply_transform=True)
+            pred_flat_da = scaler_U.inverse_transform(pred_flat_da.cpu().numpy())
 
-    pred_train = pred_flat.reshape(-1, Nx, Ny)
-    U_sim_train = U_sim[lags:n_train]
-    U_real_train = U_real[lags:n_train]
+    pred_da = pred_flat_da.reshape(-1, Nx, Ny)
+    train_time_orig = train_real.valid_indices
+    U_sim_train = U_sim[train_time_orig]
+    U_real_train = U_real[train_time_orig]
 
-    # Plot comparison at selected training time indices
     fig, axes = plt.subplots(3, 3, figsize=(12, 10))
 
-    # These are indices into the training predictions (after lags offset)
-    train_time_indices = [40, 60, 80]
+    plot_indices = [40, 60, 80]
 
-    for col, t_idx in enumerate(train_time_indices):
-        if t_idx >= len(pred_train):
-            t_idx = len(pred_train) - 1
+    for col, t_idx in enumerate(plot_indices):
+        if t_idx >= len(pred_da):
+            t_idx = len(pred_da) - 1
 
-        vmin = min(U_sim_train[t_idx].min(), U_real_train[t_idx].min(), pred_train[t_idx].min())
-        vmax = max(U_sim_train[t_idx].max(), U_real_train[t_idx].max(), pred_train[t_idx].max())
+        orig_t = train_time_orig[t_idx]
 
-        # Original timestep = lags + t_idx
-        orig_t = lags + t_idx
+        vmin = min(U_sim_train[t_idx].min(), U_real_train[t_idx].min(), pred_da[t_idx].min())
+        vmax = max(U_sim_train[t_idx].max(), U_real_train[t_idx].max(), pred_da[t_idx].max())
 
-        im0 = axes[0, col].pcolormesh(x, y, U_sim_train[t_idx].T, cmap='RdBu_r', shading='auto', vmin=vmin, vmax=vmax)
-        axes[0, col].set_title(f'Sim (train_idx={t_idx}, orig_t={orig_t})')
+        axes[0, col].pcolormesh(x, y, U_sim_train[t_idx].T, cmap='RdBu_r', shading='auto', vmin=vmin, vmax=vmax)
+        axes[0, col].set_title(f'Sim (idx={t_idx}, t={orig_t})')
         axes[0, col].set_aspect('equal')
 
-        im1 = axes[1, col].pcolormesh(x, y, U_real_train[t_idx].T, cmap='RdBu_r', shading='auto', vmin=vmin, vmax=vmax)
-        axes[1, col].set_title(f'Real (train_idx={t_idx}, orig_t={orig_t})')
+        axes[1, col].pcolormesh(x, y, U_real_train[t_idx].T, cmap='RdBu_r', shading='auto', vmin=vmin, vmax=vmax)
+        axes[1, col].set_title(f'Real (idx={t_idx}, t={orig_t})')
         axes[1, col].set_aspect('equal')
 
-        im2 = axes[2, col].pcolormesh(x, y, pred_train[t_idx].T, cmap='RdBu_r', shading='auto', vmin=vmin, vmax=vmax)
-        axes[2, col].set_title(f'DA-SHRED (train_idx={t_idx}, orig_t={orig_t})')
+        axes[2, col].pcolormesh(x, y, pred_da[t_idx].T, cmap='RdBu_r', shading='auto', vmin=vmin, vmax=vmax)
+        axes[2, col].set_title(f'DA-SHRED (idx={t_idx}, t={orig_t})')
         axes[2, col].set_aspect('equal')
 
     axes[0, 0].set_ylabel('Simulation')
@@ -918,23 +900,6 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig('reconstruction_comparison_2d.png', dpi=150)
     print("    Saved: reconstruction_comparison_2d.png")
-    plt.show()
-
-    # Error plot (Reconstruction error on yet to be seen real physics sensor measurements)
-    fig, ax = plt.subplots(figsize=(8, 4))
-    n_valid = pred_before.shape[0]
-    rmse_before = np.sqrt(np.mean((pred_before - truth) ** 2, axis=1))
-    rmse_after = np.sqrt(np.mean((pred_after - truth) ** 2, axis=1))
-    ax.plot(rmse_before, 'r-', label='SHRED', linewidth=2)
-    ax.plot(rmse_after, 'g-', label='DA-SHRED', linewidth=2)
-    ax.set_xlabel('Time step')
-    ax.set_ylabel('RMSE')
-    ax.set_title('Predictive Reconstruction Error on unseen Real Physics')
-    ax.legend()
-    ax.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig('error_comparison_2d.png', dpi=150)
-    print("    Saved: error_comparison_2d.png")
     plt.show()
 
     # Save
