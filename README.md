@@ -105,9 +105,15 @@ Ready-to-run examples for various dynamical and real-world systems:
 ```
 DA-SHRED/
 │
-├── 2D models/
-│   ├── 2DKS.py                    # DA-SHRED for 2D Kuramoto-Sivashinsky Equation
-│   └── gray-scott.py              # DA-SHRED for 2D Gray-Scott Reaction-Diffusion System
+├── DA-SHRED/                     # DA-SHRED demo
+│   ├── dashred_neural_2dks.py          #   DA-SHRED for 2D Kuramoto-Sivashinsky Equation
+│   ├── ensemble_da.py                  #   EnKF baseline
+│   ├── spectral_sindy.py
+│   ├── common2dks.py
+│   ├── runlog.py
+│   ├── sensors_2dks.py                 #   sensor sparsity
+│   ├── nu_sweep_2dks.py                #   discrepancy magnitude sweep
+│   └── ablations/
 │
 ├── Multiscale DA-SHRED/           # Multi-scale LF+HF decomposition framework
 │
@@ -138,7 +144,17 @@ pip install -r requirements.txt
 ### Run a Basic Example
 
 ```bash
+# Quick start — 1D Kuramoto-Sivashinsky
 python DASHRED_1DKS_example.py
+
+# Result and ablations on 2D models
+cd "DA-SHRED"
+python sensors_2dks.py          # sensor sparsity
+python nu_sweep_2dks.py         # discrepancy magnitude sweep
+python ablations/null_control.py
+python ablations/noise.py
+python ablations/obs_interval.py
+```
 ```
 
 ### For Cheap2Rich (RDE Application)
